@@ -1,0 +1,25 @@
+mt4:
+  terminal_path: "D:\\ICM mt4\\MetaTrader 4 IC Markets Global-2\\terminal.exe"
+  data_dir: "C:\\Users\\kryst\\AppData\\Roaming\\MetaQuotes\\Terminal\\062E3E18A303EC55FAD12AAE6065D130"
+
+backtest:
+  expert: "MACD_Sample.ex4"
+  symbol: "EURUSD"
+  period: "H1"
+  model: 0               # 0=Every Tick, 1=Control Points, 2=Open Prices Only
+  from_date: "2026.01.01"
+  to_date: "2026.01.02"
+  deposit: 10000
+  currency: "USD"
+  leverage: 500
+
+paths:
+  settings_dir: "settings"
+  results_dir: "results"
+  reports_subdir: "reports"
+  excel_filename: "backtest_results.xlsx"
+
+runner:
+  timeout: 600            # 單次回測超時（秒）
+  cooldown: 5             # 回測間隔等待（秒）
+  kill_before_run: true   # 回測前是否強制關閉已開啟的 MT4
