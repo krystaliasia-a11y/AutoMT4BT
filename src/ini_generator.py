@@ -25,7 +25,7 @@ def generate_ini(
         f"TestSymbol={config.symbol}",
         f"TestPeriod={config.period}",
         f"TestModel={config.model}",
-        "TestSpread=0",
+        f"TestSpread={config.spread}",
         "TestOptimization=false",
         "TestDateEnable=true",
         f"TestFromDate={config.from_date}",

@@ -11,10 +11,14 @@ VALID_PERIODS = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN"}
 def parse_set_filename(filename: str) -> Optional[dict]:
     """
     從 .set 檔名解析回測參數。
-    格式：{EA名稱}-{幣對}-{週期}-{起始日}-{結束日}-{版本}.set
-    例如：SRM_v6.0_AlgoX_REAL-EURUSD-H1-20260201-20260312-v1.set
+    格式：{EA名稱}-{幣對}-{週期}-{起始日}-{結束日}-{Spread}-{版本}.set
+    例如：SRM_v6.0_AlgoX_REAL-EURUSD-H1-20260201-20260312-700-v1.set
 
-    回傳 dict: expert, symbol, period, from_date, to_date
+    相容舊格式（無 Spread）：
+    {EA名稱}-{幣對}-{週期}-{起始日}-{結束日}-{版本}.set
+    例如：SRM_v6.0_AlgoX_REAL-HKGIDXHKD-H1-20250101-20251231-TEP0_TBBB2024.set
+
+    回傳 dict: expert, symbol, period, from_date, to_date, spread(可為 None)
     解析失敗回傳 None
     """
     stem = Path(filename).stem  # 去掉 .set
@@ -24,13 +28,24 @@ def parse_set_filename(filename: str) -> Optional[dict]:
         logger.warning(f"檔名格式不符（段數不足）：{filename}")
         return None
 
-    # 從右往左取：版本(skip), 結束日, 起始日, 週期, 幣對, 剩餘=EA名稱
-    version = parts[-1]       # noqa: F841
-    to_date_raw = parts[-2]
-    from_date_raw = parts[-3]
-    period = parts[-4]
-    symbol = parts[-5]
-    expert_name = "-".join(parts[:-5])
+    # 從右往左取（新格式）：版本, Spread, 結束日, 起始日, 週期, 幣對, 剩餘=EA名稱
+    # 舊格式：版本, 結束日, 起始日, 週期, 幣對, 剩餘=EA名稱（無 Spread）
+    spread_token: Optional[str] = None
+    if len(parts) >= 7:
+        version = parts[-1]  # noqa: F841
+        spread_token = parts[-2]
+        to_date_raw = parts[-3]
+        from_date_raw = parts[-4]
+        period = parts[-5]
+        symbol = parts[-6]
+        expert_name = "-".join(parts[:-6])
+    else:
+        version = parts[-1]  # noqa: F841
+        to_date_raw = parts[-2]
+        from_date_raw = parts[-3]
+        period = parts[-4]
+        symbol = parts[-5]
+        expert_name = "-".join(parts[:-5])
 
     # 驗證
     if not re.match(r"^\d{8}$", from_date_raw):
@@ -42,7 +57,9 @@ def parse_set_filename(filename: str) -> Optional[dict]:
     if period not in VALID_PERIODS:
         logger.warning(f"週期格式錯誤：{period}（檔名：{filename}）")
         return None
-    if not re.match(r"^[A-Z]{6,}$", symbol):
+    # Symbol 允許 broker 常見格式（含數字、底線、點號、大小寫）
+    # 例如：EURUSD、XAUUSDm、HK50ft.r、US30.cash
+    if not re.match(r"^[A-Za-z0-9._]{2,}$", symbol):
         logger.warning(f"幣對格式錯誤：{symbol}（檔名：{filename}）")
         return None
     if not expert_name:
@@ -53,12 +70,20 @@ def parse_set_filename(filename: str) -> Optional[dict]:
     from_date = f"{from_date_raw[:4]}.{from_date_raw[4:6]}.{from_date_raw[6:]}"
     to_date = f"{to_date_raw[:4]}.{to_date_raw[4:6]}.{to_date_raw[6:]}"
 
+    # Spread token -> int (points). If absent or no digits found, keep None so caller can fallback to default.
+    spread: Optional[int] = None
+    if spread_token:
+        m = re.search(r"(\d+)", str(spread_token))
+        if m:
+            spread = int(m.group(1))
+
     return {
         "expert": f"{expert_name}.ex4",
         "symbol": symbol,
         "period": period,
         "from_date": from_date,
         "to_date": to_date,
+        "spread": spread,
     }
 
 

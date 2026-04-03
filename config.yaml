@@ -7,6 +7,7 @@ backtest:
   symbol: "EURUSD"
   period: "H1"
   model: 0               # 0=Every Tick, 1=Control Points, 2=Open Prices Only
+  spread: 0              # 0=Current spread, >0=固定 spread (points)
   from_date: "2026.01.01"
   to_date: "2026.01.02"
   deposit: 10000
@@ -23,3 +24,11 @@ runner:
   timeout: 600            # 單次回測超時（秒）
   cooldown: 5             # 回測間隔等待（秒）
   kill_before_run: true   # 回測前是否強制關閉已開啟的 MT4
+  # MT4 退出後，報告檔可能尚未完全寫入；輪詢等待（秒）可避免偶發報告遺失
+  report_wait_timeout: 120
+  report_poll_interval: 0.5
+
+# Optional: 將資料來源/檔名的 symbol 映射成 MT4 內實際存在的 symbol
+# 例如你下載的 tick data 是 HKGIDXHKD，但券商 MT4 的交易品種是 HK50ft.r
+symbol_map:
+  HKGIDXHKD: "HK50ft.r"

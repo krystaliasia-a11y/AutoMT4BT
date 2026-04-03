@@ -12,7 +12,7 @@ from src.config_loader import load_config
 from dataclasses import replace
 from src.set_parser import parse_set_file, parse_set_filename, discover_set_files
 from src.ini_generator import generate_ini, generate_ea_ini
-from src.mt4_runner import run_backtest, verify_report
+from src.mt4_runner import run_backtest, wait_for_report_file
 from src.report_parser import parse_report
 from src.excel_writer import write_results
 
@@ -78,6 +78,9 @@ def main():
             # 4a. 解析 .set 檔名取得回測參數
             filename_params = parse_set_filename(set_file.name)
             if filename_params:
+                spread_from_name = filename_params.get("spread")
+                if spread_from_name is None:
+                    spread_from_name = config.backtest.spread
                 bt_config = replace(
                     config.backtest,
                     expert=filename_params["expert"],
@@ -85,16 +88,37 @@ def main():
                     period=filename_params["period"],
                     from_date=filename_params["from_date"],
                     to_date=filename_params["to_date"],
+                    spread=spread_from_name,
                 )
                 logger.info(f"從檔名解析：EA={bt_config.expert} 幣對={bt_config.symbol} "
-                            f"週期={bt_config.period} 日期={bt_config.from_date}~{bt_config.to_date}")
+                            f"週期={bt_config.period} 日期={bt_config.from_date}~{bt_config.to_date} Spread={bt_config.spread}")
             else:
                 bt_config = config.backtest
                 logger.warning(f"檔名格式不符，使用 config.yaml 預設值")
 
+            # 4a2. Symbol mapping（例如 HKGIDXHKD -> HK50ft.r）
+            mapped_symbol = config.symbol_map.get(bt_config.symbol, bt_config.symbol)
+            if mapped_symbol != bt_config.symbol:
+                logger.info(f"Symbol 映射：{bt_config.symbol} -> {mapped_symbol}")
+                bt_config = replace(bt_config, symbol=mapped_symbol)
+
             # 解析 .set 檔內容
             params = parse_set_file(str(set_file))
             logger.info(f"EA 參數：{params}")
+
+            # 4a3. Spread override from .set file (optional)
+            # Note: MT4 Tester spread is controlled by TestSpread in the startup ini.
+            # We support a simple convention: include one of these keys in the .set:
+            #   spread=700   (or Spread=700 / TESTSPREAD=700)
+            spread_keys = ("TestSpread", "TESTSPREAD", "spread", "Spread", "SPREAD")
+            spread_raw = next((params.get(k) for k in spread_keys if k in params), None)
+            if spread_raw is not None:
+                try:
+                    spread_val = int(float(str(spread_raw).strip()))
+                    bt_config = replace(bt_config, spread=spread_val)
+                    logger.info(f"從 .set 讀取 spread：{spread_raw} -> TestSpread={spread_val}")
+                except ValueError:
+                    logger.warning(f".set 的 spread 無法解析（忽略）：{spread_raw}")
 
             # 4b. 報告路徑
             # MT4 的 TestReport 相對路徑是相對於 data directory
@@ -131,8 +155,13 @@ def main():
                 continue
 
             # 4e. 驗證報告並複製到結果目錄
-            if not mt4_report_htm.exists():
-                logger.error(f"報告未產生：{mt4_report_htm}")
+            # MT4 可能先結束 process 再寫完 .htm，需短暫輪詢避免偶發找不到檔案
+            if not wait_for_report_file(
+                mt4_report_htm,
+                timeout=float(config.runner.report_wait_timeout),
+                poll=config.runner.report_poll_interval,
+            ):
+                logger.error(f"報告未產生（逾時 {config.runner.report_wait_timeout}s）：{mt4_report_htm}")
                 failed.append(set_file.name)
                 continue
 
