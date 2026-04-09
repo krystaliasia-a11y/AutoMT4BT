@@ -1,6 +1,7 @@
 import re
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 
 from bs4 import BeautifulSoup
@@ -58,6 +59,34 @@ def parse_win_rate(metrics: dict) -> float:
     text2 = metrics.get("Profit trades", "")
     match2 = re.search(r"\(([\d.]+)%\)", text2)
     return float(match2.group(1)) if match2 else 0.0
+
+
+def extract_last_trade_date(htm_path: str) -> Optional[datetime]:
+    """Extract the datetime of the last trade activity from an MT4 backtest HTML report.
+
+    MT4 reports mark trade timestamps with class=msdate in format 'YYYY.MM.DD HH:MM'.
+    Returns the latest trade datetime found, or None if no timestamps are present.
+    """
+    try:
+        with open(htm_path, "r", encoding="utf-8", errors="ignore") as f:
+            html = f.read()
+    except FileNotFoundError:
+        logger.error(f"報告檔案不存在：{htm_path}")
+        return None
+
+    soup = BeautifulSoup(html, "lxml")
+    last_dt: Optional[datetime] = None
+
+    for td in soup.find_all("td", class_="msdate"):
+        text = td.get_text(strip=True)
+        try:
+            dt = datetime.strptime(text, "%Y.%m.%d %H:%M")
+            if last_dt is None or dt > last_dt:
+                last_dt = dt
+        except ValueError:
+            pass
+
+    return last_dt
 
 
 def parse_report(htm_path: str, set_filename: str, config, bt_config=None) -> Optional[BacktestResult]:
