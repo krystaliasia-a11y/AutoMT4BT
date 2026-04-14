@@ -1,6 +1,7 @@
 import yaml
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass
@@ -42,12 +43,49 @@ class RunnerConfig:
 
 
 @dataclass
+class AutoGenerateConfig:
+    """Configuration for the dynamic set-file generation mode (auto_generate.enabled=1).
+
+    When enabled the program fetches live price data, calculates boundaries,
+    generates .set files, and cycles through years automatically.
+    """
+    enabled: bool
+    start_year: int
+    end_year: int
+    pairs: list
+    template_file: Path
+    ea_name: str
+    # SRM EA parameters
+    equity_assumption: str
+    real_equity: str
+    tep_var: str
+    opt_tep: str
+    take_profit_ratio: str
+    pullback_ratio: str
+    drop_ratio: str
+    brounce_ratio: str
+    open_order_buffer_pct: float
+    enable_buy_order: str
+    enable_sell_order: str
+    max_instant_order_level: str
+    max_orders_per_side: str
+    margin_level_to_open_new_orders: str
+    magic_number_start: Optional[int]
+    # MT4 parameters
+    spread: str
+    time_frame: str
+    # Yahoo Finance symbol overrides
+    yf_symbol_map: dict = field(default_factory=dict)
+
+
+@dataclass
 class AppConfig:
     mt4: MT4Config
     backtest: BacktestConfig
     paths: PathsConfig
     runner: RunnerConfig
-    symbol_map: dict[str, str]
+    symbol_map: dict
+    auto_generate: AutoGenerateConfig
 
 
 def load_config(config_path: str) -> AppConfig:
@@ -105,8 +143,56 @@ def load_config(config_path: str) -> AppConfig:
     if not isinstance(symbol_map, dict):
         raise ValueError("config.yaml 的 symbol_map 必須是 key/value 的對照表（dict）")
 
+    # ── auto_generate section (optional; defaults to disabled) ─────────────
+    ag_raw = raw.get("auto_generate", {}) or {}
+    ag_enabled = int(ag_raw.get("enabled", 0)) == 1
+
+    template_rel = ag_raw.get("template_file", "config/template.set")
+    template_file = (base_dir / template_rel).resolve()
+
+    yf_map = ag_raw.get("yf_symbol_map", {}) or {}
+    if not isinstance(yf_map, dict):
+        raise ValueError("auto_generate.yf_symbol_map must be a dict")
+
+    magic_raw = ag_raw.get("magic_number_start", None)
+    magic_number_start = int(magic_raw) if magic_raw is not None else None
+
+    auto_generate = AutoGenerateConfig(
+        enabled=ag_enabled,
+        start_year=int(ag_raw.get("start_year", 2024)),
+        end_year=int(ag_raw.get("end_year", 2024)),
+        pairs=list(ag_raw.get("pairs", [])),
+        template_file=template_file,
+        ea_name=str(ag_raw.get("ea_name", "SRM_v6.0_AlgoX_REAL")),
+        equity_assumption=str(ag_raw.get("equity_assumption", "30000")),
+        real_equity=str(ag_raw.get("real_equity", "10000")),
+        tep_var=str(ag_raw.get("tep_var", "20")),
+        opt_tep=str(ag_raw.get("opt_tep", "0")),
+        take_profit_ratio=str(ag_raw.get("take_profit_ratio", "1.8")),
+        pullback_ratio=str(ag_raw.get("pullback_ratio", "0.8")),
+        drop_ratio=str(ag_raw.get("drop_ratio", "1.5")),
+        brounce_ratio=str(ag_raw.get("brounce_ratio", "1.0")),
+        open_order_buffer_pct=float(ag_raw.get("open_order_buffer_pct", 30)),
+        enable_buy_order=str(ag_raw.get("enable_buy_order", "1")),
+        enable_sell_order=str(ag_raw.get("enable_sell_order", "1")),
+        max_instant_order_level=str(ag_raw.get("max_instant_order_level", "2")),
+        max_orders_per_side=str(ag_raw.get("max_orders_per_side", "111")),
+        margin_level_to_open_new_orders=str(ag_raw.get("margin_level_to_open_new_orders", "150")),
+        magic_number_start=magic_number_start,
+        spread=str(ag_raw.get("spread", "15")),
+        time_frame=str(ag_raw.get("time_frame", "H1")),
+        yf_symbol_map=yf_map,
+    )
+
     # 驗證 MT4 路徑
     if not Path(mt4.terminal_path).exists():
         raise FileNotFoundError(f"找不到 MT4 terminal：{mt4.terminal_path}")
 
-    return AppConfig(mt4=mt4, backtest=backtest, paths=paths, runner=runner, symbol_map=symbol_map)
+    return AppConfig(
+        mt4=mt4,
+        backtest=backtest,
+        paths=paths,
+        runner=runner,
+        symbol_map=symbol_map,
+        auto_generate=auto_generate,
+    )

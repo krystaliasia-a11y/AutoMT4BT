@@ -32,3 +32,58 @@ runner:
 # 例如你下載的 tick data 是 HKGIDXHKD，但券商 MT4 的交易品種是 HK50ft.r
 symbol_map:
   HKGIDXHKD: "HK50ft.r"
+
+# ── Auto-generate mode ──────────────────────────────────────────────────────
+# enabled: 0 = disabled (use pre-placed .set files in settings/ as before)
+#          1 = enabled  (dynamically generate set files from online price data)
+#
+# When enabled=1 the program will:
+#   1. For each pair in `pairs`, fetch OHLC data from Yahoo Finance.
+#   2. Calculate top/bottom boundaries at each cycle's start date:
+#        top_boundary    = 120-day highest high  + 0.5 × ATR(20D)
+#        bottom_boundary = 120-day lowest low    − 0.5 × ATR(20D)
+#   3. Generate a .set file and run the MT4 backtest.
+#   4. Use last_trade_date + 1 day as the next cycle's start date,
+#      regenerate the .set file, and repeat until end_year is covered.
+auto_generate:
+  enabled: 0              # 0=disabled, 1=enabled
+
+  start_year: 2024        # backtest start year (Jan 1 of this year)
+  end_year:   2024        # backtest end year   (Dec 31 of this year)
+
+  pairs:                  # list of trading pairs to test
+    - NZDCAD
+    - AUDUSD
+
+  # Path to the SRM EA .set template file (relative to this config.yaml)
+  template_file: "config/template.set"
+
+  # EA name used in generated filenames (without .ex4)
+  ea_name: "SRM_v6.0_AlgoX_REAL"
+
+  # ── SRM EA parameters ─────────────────────────────────────────────────────
+  equity_assumption: "30000"        # start_equity in set file
+  real_equity:       "10000"        # real_equity in set file
+  tep_var:           "20"           # Target Earning Percentage (%)
+  opt_tep:           "0"            # Optimal TEP
+  take_profit_ratio: "1.8"
+  pullback_ratio:    "0.8"
+  drop_ratio:        "1.5"
+  brounce_ratio:     "1.0"
+  open_order_buffer_pct: 30         # % of range trimmed from each side for entry levels
+  enable_buy_order:  "1"
+  enable_sell_order: "1"
+  max_instant_order_level: "2"
+  max_orders_per_side: "111"
+  margin_level_to_open_new_orders: "150"
+  magic_number_start: null          # null = random; integer = fixed start value
+
+  # ── MT4 parameters ────────────────────────────────────────────────────────
+  spread:     "15"
+  time_frame: "H1"
+
+  # ── Yahoo Finance symbol overrides ────────────────────────────────────────
+  # By default forex pairs are fetched as PAIR=X (e.g. NZDCAD=X).
+  # Override here for commodities, indices, or broker-specific names.
+  yf_symbol_map:
+    XAUUSD: "GC=F"       # Gold futures
