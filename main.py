@@ -17,6 +17,16 @@ from src.report_parser import parse_report, extract_last_trade_date
 from src.excel_writer import write_results
 
 
+def _has_weekday(start_date, end_date) -> bool:
+    """Return True if [start_date, end_date] contains at least one weekday (Mon–Fri)."""
+    d = start_date
+    while d <= end_date:
+        if d.weekday() < 5:
+            return True
+        d += timedelta(days=1)
+    return False
+
+
 def setup_logging(log_dir: Path):
     """設定日誌：同時輸出到 console 和檔案"""
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -265,6 +275,16 @@ def main():
                 next_from = last_trade_dt.date() + timedelta(days=1)
                 if next_from >= original_to_date_obj:
                     logger.info(f"週期 {cycle_num}：下一週期起始日已達原始結束日，停止週期。")
+                    break
+
+                # Guard: if the remaining window contains only weekends (e.g. Dec 30–31
+                # both fall on Sat/Sun), MT4 has no tick data and will freeze with an
+                # error dialog — skip the cycle instead of launching MT4.
+                if not _has_weekday(next_from, original_to_date_obj):
+                    logger.info(
+                        f"週期 {cycle_num}：下一週期 {next_from} ~ {original_to_date_obj} "
+                        f"全為週末無交易日，停止週期。"
+                    )
                     break
 
                 cycle_from_date = next_from.strftime("%Y.%m.%d")
