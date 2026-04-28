@@ -39,6 +39,7 @@ class RunnerConfig:
     # MT4 關閉後，報告 .htm 可能延遲寫入磁碟；輪詢等待避免偶發「找不到報告」
     report_wait_timeout: int
     report_poll_interval: float
+    max_retries: int  # 報告未產生時最多重試次數
 
 
 @dataclass
@@ -99,6 +100,7 @@ def load_config(config_path: str) -> AppConfig:
         kill_before_run=r["kill_before_run"],
         report_wait_timeout=int(r.get("report_wait_timeout", 120)),
         report_poll_interval=float(r.get("report_poll_interval", 0.5)),
+        max_retries=int(r.get("max_retries", 1)),
     )
 
     symbol_map = raw.get("symbol_map", {}) or {}

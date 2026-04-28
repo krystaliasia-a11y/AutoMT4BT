@@ -27,6 +27,7 @@ runner:
   # MT4 退出後，報告檔可能尚未完全寫入；輪詢等待（秒）可避免偶發報告遺失
   report_wait_timeout: 120
   report_poll_interval: 0.5
+  max_retries: 1          # 報告未產生時最多重試次數（0=不重試）
 
 # Optional: 將資料來源/檔名的 symbol 映射成 MT4 內實際存在的 symbol
 # 例如你下載的 tick data 是 HKGIDXHKD，但券商 MT4 的交易品種是 HK50ft.r

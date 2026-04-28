@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from src.config_loader import BacktestConfig
 
@@ -63,6 +64,18 @@ def generate_ea_ini(
             continue
     else:
         raise ValueError(f"無法讀取 .set 檔案：{set_file_path}")
+
+    # incorrect_tick_popup=1 causes MT4's Strategy Tester to show a blocking
+    # dialog when the EA detects a suspicious tick value. With
+    # TestShutdownTerminal=true, this popup prevents the report from being
+    # written before MT4 exits. Override to 0 to suppress the dialog;
+    # the EA's tick-handling logic is unaffected.
+    set_content = re.sub(
+        r"^incorrect_tick_popup\s*=.*$",
+        "incorrect_tick_popup=0",
+        set_content,
+        flags=re.MULTILINE,
+    )
 
     lines = [
         "<common>",

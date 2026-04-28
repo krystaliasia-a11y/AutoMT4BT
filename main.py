@@ -190,26 +190,44 @@ def main():
                 generate_ea_ini(bt_config_cycle, str(set_file), ea_ini_path)
                 logger.info(f"EA 參數檔已產生：{ea_ini_path}")
 
-                # 4d. 執行回測
-                success = run_backtest(
-                    terminal_path=config.mt4.terminal_path,
-                    ini_path=ini_path,
-                    timeout=config.runner.timeout,
-                    kill_before=config.runner.kill_before_run,
-                )
-                if not success:
+                # 4d. 執行回測（報告未產生時可重試）
+                backtest_success = True
+                report_generated = False
+                for attempt in range(config.runner.max_retries + 1):
+                    if attempt > 0:
+                        logger.warning(
+                            f"報告未產生，重試第 {attempt} 次（週期 {cycle_num}）..."
+                        )
+                    success = run_backtest(
+                        terminal_path=config.mt4.terminal_path,
+                        ini_path=ini_path,
+                        timeout=config.runner.timeout,
+                        kill_before=config.runner.kill_before_run,
+                    )
+                    if not success:
+                        backtest_success = False
+                        break
+                    # 4e. 等待報告寫入完成
+                    if wait_for_report_file(
+                        mt4_report_htm,
+                        timeout=float(config.runner.report_wait_timeout),
+                        poll=config.runner.report_poll_interval,
+                    ):
+                        report_generated = True
+                        break
+
+                if not backtest_success:
                     logger.error(f"回測失敗（週期 {cycle_num}）：{set_file.name}")
                     failed.append(f"{set_file.name} [週期{cycle_num}]")
                     set_had_error = True
                     break
 
-                # 4e. 等待報告寫入完成
-                if not wait_for_report_file(
-                    mt4_report_htm,
-                    timeout=float(config.runner.report_wait_timeout),
-                    poll=config.runner.report_poll_interval,
-                ):
-                    logger.error(f"報告未產生（逾時 {config.runner.report_wait_timeout}s，週期 {cycle_num}）：{mt4_report_htm}")
+                if not report_generated:
+                    logger.error(
+                        f"報告未產生（逾時 {config.runner.report_wait_timeout}s，"
+                        f"已重試 {config.runner.max_retries} 次，週期 {cycle_num}）："
+                        f"{mt4_report_htm}"
+                    )
                     failed.append(f"{set_file.name} [週期{cycle_num}]")
                     set_had_error = True
                     break
