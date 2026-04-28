@@ -75,7 +75,7 @@ def main():
         sys.exit(1)
 
     # 設定日誌
-    setup_logging(config.paths.results_dir)
+    setup_logging(config.paths.results_dir / "logs")
     logger = logging.getLogger(__name__)
 
     # 2. 建立輸出目錄
