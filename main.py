@@ -223,14 +223,25 @@ def main():
                     break
 
                 if not report_generated:
-                    logger.error(
-                        f"報告未產生（逾時 {config.runner.report_wait_timeout}s，"
-                        f"已重試 {config.runner.max_retries} 次，週期 {cycle_num}）："
-                        f"{mt4_report_htm}"
-                    )
-                    failed.append(f"{set_file.name} [週期{cycle_num}]")
-                    set_had_error = True
-                    break
+                    if can_cycle:
+                        # MT4 did not write a report — most likely no trades occurred in
+                        # this period (some EA/MT4 versions skip HTM generation when there
+                        # are 0 trades).  Treat it the same as the explicit 0-trades stop
+                        # condition so remaining cycles are not abandoned.
+                        logger.warning(
+                            f"週期 {cycle_num}：報告未產生（逾時 {config.runner.report_wait_timeout}s，"
+                            f"已重試 {config.runner.max_retries} 次），視為無交易，停止週期。"
+                        )
+                        break
+                    else:
+                        logger.error(
+                            f"報告未產生（逾時 {config.runner.report_wait_timeout}s，"
+                            f"已重試 {config.runner.max_retries} 次，週期 {cycle_num}）："
+                            f"{mt4_report_htm}"
+                        )
+                        failed.append(f"{set_file.name} [週期{cycle_num}]")
+                        set_had_error = True
+                        break
 
                 logger.info(f"報告已產生：{mt4_report_htm}")
 

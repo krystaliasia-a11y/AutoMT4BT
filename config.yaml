@@ -1,6 +1,6 @@
 mt4:
-  terminal_path: "D:\\ICM mt4\\MetaTrader 4 IC Markets Global-2\\terminal.exe"
-  data_dir: "C:\\Users\\kryst\\AppData\\Roaming\\MetaQuotes\\Terminal\\062E3E18A303EC55FAD12AAE6065D130"
+  terminal_path: "D:\\ICM mt4\\MetaTrader 4 IC Markets Global-4\\terminal.exe"
+  data_dir: "C:\\Users\\kryst\\AppData\\Roaming\\MetaQuotes\\Terminal\\49A1399D38C7BAEC9C10CD35B9A961F8"
 
 backtest:
   expert: "MACD_Sample.ex4"
