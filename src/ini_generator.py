@@ -1,12 +1,14 @@
 import re
 from pathlib import Path
-from src.config_loader import BacktestConfig
+from src.config_loader import BacktestConfig, MT4Config
+from typing import Optional
 
 
 def generate_ini(
     config: BacktestConfig,
     report_path: str,
     output_path: str,
+    mt4_config: Optional[MT4Config] = None,
 ) -> str:
     """
     產生 MT4 startup config 檔案。
@@ -21,6 +23,18 @@ def generate_ini(
         "ExpertsExpImport=true",
         "ExpertsTrades=true",
         "",
+    ]
+
+    # Login/Server so MT4 reconnects to the correct account (with trading allowed).
+    # MT4 uses the remembered password — no plaintext password needed here.
+    if mt4_config and mt4_config.login:
+        lines.append(f"Login={mt4_config.login}")
+    if mt4_config and mt4_config.server:
+        lines.append(f"Server={mt4_config.server}")
+    if mt4_config and (mt4_config.login or mt4_config.server):
+        lines.append("")
+
+    lines += [
         "; Strategy Tester settings",
         f"TestExpert={config.expert}",
         f"TestSymbol={config.symbol}",

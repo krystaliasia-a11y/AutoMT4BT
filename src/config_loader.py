@@ -7,6 +7,8 @@ from dataclasses import dataclass
 class MT4Config:
     terminal_path: str
     data_dir: str
+    login: str = ""
+    server: str = ""
 
 
 @dataclass
@@ -71,6 +73,8 @@ def load_config(config_path: str) -> AppConfig:
     mt4 = MT4Config(
         terminal_path=raw["mt4"]["terminal_path"],
         data_dir=raw["mt4"]["data_dir"],
+        login=str(raw["mt4"].get("login", "")),
+        server=str(raw["mt4"].get("server", "")),
     )
 
     backtest = BacktestConfig(

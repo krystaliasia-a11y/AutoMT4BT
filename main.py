@@ -183,7 +183,7 @@ def main():
                     logger.info(f"\n--- 週期 {cycle_num}：{cycle_from_date} → {original_to_date} ---")
 
                 # 4c. 產生 ini
-                generate_ini(bt_config_cycle, report_name, ini_path)
+                generate_ini(bt_config_cycle, report_name, ini_path, mt4_config=config.mt4)
                 logger.info(f"INI 已產生：{ini_path}")
 
                 ea_ini_path = str(mt4_data_dir / "tester" / f"{bt_config_cycle.expert}.ini")
