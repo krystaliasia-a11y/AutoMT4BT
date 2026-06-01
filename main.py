@@ -1,9 +1,10 @@
 import sys
 import shutil
+import stat
 import time
 import logging
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 
 # 確保專案目錄在模組搜尋路徑中（內嵌式 Python 需要）
 sys.path.insert(0, str(Path(__file__).parent))
@@ -25,6 +26,87 @@ def _has_weekday(start_date, end_date) -> bool:
             return True
         d += timedelta(days=1)
     return False
+
+
+def _make_writable(path: Path) -> None:
+    """Remove the read-only flag from a file (no-op if already writable)."""
+    try:
+        current = path.stat().st_mode
+        path.chmod(current | stat.S_IWRITE)
+    except Exception:
+        pass
+
+
+def _make_readonly(path: Path) -> None:
+    """Set a file read-only so MT4 cannot overwrite it during server sync."""
+    try:
+        current = path.stat().st_mode
+        path.chmod(current & ~stat.S_IWRITE)
+    except Exception:
+        pass
+
+
+def sync_history_files(data_dir: Path, target_server: str) -> None:
+    """Copy missing or outdated .hst files from sibling server folders into the
+    target server's history folder, then lock them read-only.
+
+    MT4 validates local .hst files against the connected broker server.  When
+    the broker has no record of a symbol's M1 history (common for demo accounts
+    with limited data), MT4 wipes the local file to a 148-byte stub.  Making
+    the copied files read-only prevents that wipe while still allowing the
+    strategy tester to read bar data.
+
+    A file is copied only when the target either lacks it completely or the
+    source is larger (= more historical bars).
+    """
+    logger = logging.getLogger(__name__)
+    history_root = data_dir / "history"
+    target_dir = history_root / target_server
+
+    if not target_dir.exists():
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+    # Folders that are not broker server profiles
+    _skip = {"default", "deleted", "downloads", "mailbox", "signals", "symbolsets"}
+
+    for src_dir in history_root.iterdir():
+        if not src_dir.is_dir():
+            continue
+        if src_dir.name in _skip or src_dir.name == target_server:
+            continue
+
+        for src_file in src_dir.glob("*.hst"):
+            dst_file = target_dir / src_file.name
+            src_size = src_file.stat().st_size
+            dst_size = dst_file.stat().st_size if dst_file.exists() else 0
+
+            if src_size > dst_size:
+                # Ensure destination is writable before overwriting
+                if dst_file.exists():
+                    _make_writable(dst_file)
+                shutil.copy2(str(src_file), str(dst_file))
+                # Lock so MT4 cannot wipe the file during server validation
+                _make_readonly(dst_file)
+                logger.info(
+                    f"歷史資料同步：{src_file.name}  "
+                    f"{src_dir.name} → {target_server}  "
+                    f"({dst_size} → {src_size} bytes) [鎖定唯讀]"
+                )
+
+
+def _tester_log_path(data_dir: Path) -> Path:
+    """Return the path to today's MT4 strategy-tester log file."""
+    return data_dir / "tester" / "logs" / (date.today().strftime("%Y%m%d") + ".log")
+
+
+def _read_new_log_text(log_path: Path, from_offset: int) -> str:
+    """Read and return the bytes appended to log_path since from_offset."""
+    try:
+        with open(log_path, "rb") as f:
+            f.seek(from_offset)
+            return f.read().decode("utf-8", errors="replace")
+    except Exception:
+        return ""
 
 
 def setup_logging(log_dir: Path):
@@ -80,6 +162,10 @@ def main():
 
     # 2. 建立輸出目錄
     config.paths.results_dir.mkdir(parents=True, exist_ok=True)
+
+    # 2b. 同步歷史資料：將其他伺服器資料夾的 .hst 檔複製到目標伺服器資料夾
+    if config.mt4.server:
+        sync_history_files(Path(config.mt4.data_dir), config.mt4.server)
     config.paths.reports_dir.mkdir(parents=True, exist_ok=True)
 
     # 3. 掃描所有 .set 檔案
@@ -182,6 +268,10 @@ def main():
                 else:
                     logger.info(f"\n--- 週期 {cycle_num}：{cycle_from_date} → {original_to_date} ---")
 
+                # 4b2. 每次啟動 MT4 前重新同步歷史資料（防止 MT4 清空 .hst）
+                if config.mt4.server:
+                    sync_history_files(mt4_data_dir, config.mt4.server)
+
                 # 4c. 產生 ini
                 generate_ini(bt_config_cycle, report_name, ini_path, mt4_config=config.mt4)
                 logger.info(f"INI 已產生：{ini_path}")
@@ -190,14 +280,20 @@ def main():
                 generate_ea_ini(bt_config_cycle, str(set_file), ea_ini_path)
                 logger.info(f"EA 參數檔已產生：{ea_ini_path}")
 
-                # 4d. 執行回測（報告未產生時可重試）
+                # 4d. 執行回測（報告未產生或偵測到錯誤帳號時可重試）
                 backtest_success = True
                 report_generated = False
+                tlog = _tester_log_path(mt4_data_dir)
                 for attempt in range(config.runner.max_retries + 1):
                     if attempt > 0:
                         logger.warning(
-                            f"報告未產生，重試第 {attempt} 次（週期 {cycle_num}）..."
+                            f"重試第 {attempt} 次（週期 {cycle_num}）..."
                         )
+                        # Re-sync before every retry as well
+                        if config.mt4.server:
+                            sync_history_files(mt4_data_dir, config.mt4.server)
+                    # Record tester-log position before this MT4 run
+                    tlog_offset = tlog.stat().st_size if tlog.exists() else 0
                     success = run_backtest(
                         terminal_path=config.mt4.terminal_path,
                         ini_path=ini_path,
@@ -213,6 +309,26 @@ def main():
                         timeout=float(config.runner.report_wait_timeout),
                         poll=config.runner.report_poll_interval,
                     ):
+                        # Inspect new tester-log entries for known failure patterns
+                        new_log = _read_new_log_text(tlog, tlog_offset)
+                        if "Automated trading is forbidden" in new_log:
+                            if attempt < config.runner.max_retries:
+                                logger.warning(
+                                    f"週期 {cycle_num}：偵測到錯誤帳號 16384"
+                                    f"（MT4 帳號切換競爭），重試第 {attempt + 1} 次…"
+                                )
+                                mt4_report_htm.unlink(missing_ok=True)
+                                mt4_report_gif.unlink(missing_ok=True)
+                                continue
+                            logger.error(
+                                f"週期 {cycle_num}：偵測到錯誤帳號 16384，已達最大重試次數"
+                            )
+                        elif "no history data" in new_log:
+                            logger.warning(
+                                f"週期 {cycle_num}：MT4 缺少此期間的 M1 bar 資料"
+                                f"（需透過 TDS 為 {bt_config_cycle.symbol}"
+                                f" 下載完整的 Dukascopy 歷史資料）"
+                            )
                         report_generated = True
                         break
 
