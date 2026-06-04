@@ -7,9 +7,16 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def kill_mt4() -> None:
-    """強制關閉所有 MT4 terminal.exe 程序"""
-    os.system("taskkill /f /im terminal.exe >nul 2>&1")
+def kill_mt4(terminal_path: str | None = None) -> None:
+    """強制關閉指定路徑的 MT4 terminal.exe 程序。
+    若提供 terminal_path，只關閉該路徑的 process；否則關閉所有 terminal.exe。
+    """
+    if terminal_path:
+        # Normalise to backslashes so the imagepath filter matches Windows paths
+        norm = os.path.normpath(terminal_path)
+        os.system(f'taskkill /f /fi "imagepath eq {norm}" >nul 2>&1')
+    else:
+        os.system("taskkill /f /im terminal.exe >nul 2>&1")
     time.sleep(3)
 
 
@@ -64,7 +71,7 @@ def run_backtest(
     """
     if kill_before:
         logger.info("關閉已開啟的 MT4...")
-        kill_mt4()
+        kill_mt4(terminal_path)
 
     if not os.path.exists(terminal_path):
         logger.error(f"找不到 MT4：{terminal_path}")
@@ -95,7 +102,7 @@ def run_backtest(
         except OSError:
             pass
         # Windows 下 shell=True 時 kill 子程序未必關掉 terminal.exe，統一再強殺
-        kill_mt4()
+        kill_mt4(terminal_path)
         return False
 
 
