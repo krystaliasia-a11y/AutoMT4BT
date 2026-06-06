@@ -119,8 +119,11 @@ def parse_set_file(set_file_path: str) -> dict:
 
 
 def discover_set_files(settings_dir: str) -> list:
-    """掃描目錄下所有 .set 檔案，依檔名排序回傳"""
+    """遞迴掃描目錄及所有子目錄下的 .set 檔案，依子目錄名稱+檔名排序回傳"""
     dir_path = Path(settings_dir)
     if not dir_path.exists():
         return []
-    return sorted(dir_path.glob("*.set"), key=lambda p: p.name)
+    return sorted(
+        dir_path.rglob("*.set"),
+        key=lambda p: (p.relative_to(dir_path).parent, p.name),
+    )

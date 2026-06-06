@@ -44,7 +44,7 @@ def main():
         sys.exit(1)
 
     # 設定日誌
-    setup_logging(config.paths.results_dir)
+    setup_logging(config.paths.results_dir / "logs")
     logger = logging.getLogger(__name__)
 
     # 2. 建立輸出目錄
@@ -71,7 +71,8 @@ def main():
 
     for idx, set_file in enumerate(set_files, 1):
         logger.info(f"\n{'='*50}")
-        logger.info(f"[{idx}/{len(set_files)}] {set_file.name}")
+        rel_display = set_file.relative_to(config.paths.settings_dir)
+        logger.info(f"[{idx}/{len(set_files)}] {rel_display}")
         logger.info(f"{'='*50}")
 
         try:
@@ -128,8 +129,11 @@ def main():
             mt4_report_htm = mt4_data_dir / f"{report_name}.htm"
             mt4_report_gif = mt4_data_dir / f"{report_name}.gif"
 
-            # 最終複製到的目的地
-            final_report_dir = config.paths.reports_dir
+            # 最終複製到的目的地：按 .set 所在子目錄映射到報告目錄
+            # e.g. settings/sub1/file.set → results/reports/sub1/file.htm
+            rel_subfolder = set_file.parent.relative_to(config.paths.settings_dir)
+            final_report_dir = config.paths.reports_dir / rel_subfolder
+            final_report_dir.mkdir(parents=True, exist_ok=True)
 
             # 4c. 產生 ini（寫入 MT4 資料目錄）
             ini_path = str(Path(config.mt4.data_dir) / "backtest_auto.ini")
